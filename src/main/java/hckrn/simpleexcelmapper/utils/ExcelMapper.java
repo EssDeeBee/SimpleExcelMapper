@@ -9,10 +9,7 @@ import org.apache.poi.ss.util.CellRangeAddress;
 
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.lang.reflect.Parameter;
+import java.lang.reflect.*;
 import java.sql.Date;
 import java.time.ZoneId;
 import java.util.*;
@@ -27,32 +24,33 @@ public class ExcelMapper {
         Iterator<Sheet> sheetIterator = workbook.sheetIterator();
         while (sheetIterator.hasNext()) {
             Sheet sheet = sheetIterator.next();
-            result.put(sheet.getSheetName(), mapSheetToObj(sheet, tObject, true));
+            result.put(sheet.getSheetName(), mapSheetToObjs(sheet, tObject, true));
         }
         return result;
     }
 
-    public final <T> List<T> mapSheetToObj(Sheet sheet, Class<T> tObject, boolean ignoreFirstRow) {
+    public final <T> List<T> mapSheetToObjs(Sheet sheet, Class<T> tObject, boolean ignoreFirstRow) {
         var result = new LinkedList<T>();
         Iterator<Row> rowIterator = sheet.rowIterator();
         if (rowIterator.hasNext() && ignoreFirstRow) {
             rowIterator.next();
         }
         while (rowIterator.hasNext()) {
-            result.add(createObjectFromDeclaredExcelColumns(rowIterator.next(), tObject));
+            result.add(mapRowToObj(rowIterator.next(), tObject));
         }
         return result;
     }
 
 
     @SneakyThrows
-    public final <T> T createObjectFromDeclaredExcelColumns(Row row, Class<T> tClass) {
+    public final <T> T mapRowToObj(Row row, Class<T> tClass) {
         Constructor<?>[] constructors = tClass.getConstructors();
-        Constructor<?> noArgsConstructor = Arrays.stream(constructors).filter(constructor -> constructor.getParameterCount() == 0).findFirst().orElseThrow(RuntimeException::new);
+        Constructor<?> noArgsConstructor = Arrays.stream(constructors)
+                .filter(constructor -> constructor.getParameterCount() == 0).findFirst().orElseThrow(RuntimeException::new);
         T toObject = (T) noArgsConstructor.newInstance();
 
         PropertyDescriptor[] propertyDescriptors = Introspector.getBeanInfo(tClass).getPropertyDescriptors();
-        for (PropertyDescriptor propertyDescriptor : propertyDescriptors) {
+        for (var propertyDescriptor : propertyDescriptors) {
 
             try {
                 Field field = tClass.getDeclaredField(propertyDescriptor.getName());
@@ -60,22 +58,10 @@ public class ExcelMapper {
                 Method writeMethod = propertyDescriptor.getWriteMethod();
                 if (columnExcel != null) {
                     Parameter[] parameters = writeMethod.getParameters();
-
                     if (parameters.length == 1) {
                         Cell cell = row.getCell(columnExcel.position());
                         if (cell != null) {
-                            if (parameters[0].getType().isAssignableFrom(String.class)) {
-                                writeMethod.invoke(toObject, getStringCellValueOrEmpty(cell));
-
-                            } else if (parameters[0].getType().isAssignableFrom(Double.class)) {
-                                writeMethod.invoke(toObject, getDoubleCellValueOrZeroFromMergedCells(cell));
-
-                            } else if (parameters[0].getType().isAssignableFrom(Date.class)) {
-                                writeMethod.invoke(toObject, getDateCellOrNull(cell));
-
-                            } else if (parameters[0].getType().isAssignableFrom(Integer.class)) {
-                                writeMethod.invoke(toObject, getDoubleCellValueOrZero(cell).intValue());
-                            }
+                            extractAndWriteValue(parameters, writeMethod, toObject, cell);
                         }
                     } else {
                         log.debug(writeMethod.getName() + " method ignored while creating entity param, reason: method has not less or more than one parameter");
@@ -89,11 +75,28 @@ public class ExcelMapper {
         return toObject;
     }
 
+    private <T> void extractAndWriteValue(Parameter[] parameters, Method writeMethod, T toObject, Cell cell) throws IllegalAccessException, InvocationTargetException {
+        Class<?> type = parameters[0].getType();
+
+        if (type.isAssignableFrom(String.class)) {
+            writeMethod.invoke(toObject, getStringCellValueOrEmpty(cell));
+
+        } else if (type.isAssignableFrom(Double.class)) {
+            writeMethod.invoke(toObject, getDoubleCellValueOrZeroFromMergedCells(cell));
+
+        } else if (type.isAssignableFrom(Date.class)) {
+            writeMethod.invoke(toObject, getDateCellOrNull(cell));
+
+        } else if (type.isAssignableFrom(Integer.class)) {
+            writeMethod.invoke(toObject, getDoubleCellValueOrZero(cell).intValue());
+        }
+    }
+
     private double getDoubleCellValueOrZeroFromMergedCells(Cell cell) {
         if (cell != null) {
             List<CellRangeAddress> cellAddresses = cell.getRow().getSheet().getMergedRegions();
 
-            for (CellRangeAddress cellAddress : cellAddresses) {
+            for (var cellAddress : cellAddresses) {
                 if (cellAddress.isInRange(cell)) {
                     Cell firstMergedCell = cell.getRow().getSheet().getRow(cellAddress.getFirstRow()).getCell(cellAddress.getFirstColumn());
                     return getDoubleCellValueOrZero(firstMergedCell);
@@ -111,7 +114,6 @@ public class ExcelMapper {
             } catch (NumberFormatException | IllegalStateException ex) {
                 log.debug(ex.getMessage());
             }
-
         }
         return cellValue;
     }
@@ -124,7 +126,6 @@ public class ExcelMapper {
             } catch (NumberFormatException | IllegalStateException ex) {
                 log.debug(ex.getMessage());
             }
-
         }
         return cellValue;
     }
@@ -138,7 +139,6 @@ public class ExcelMapper {
             } catch (NumberFormatException | IllegalStateException ex) {
                 log.debug(ex.getMessage());
             }
-
         }
         return null;
     }
