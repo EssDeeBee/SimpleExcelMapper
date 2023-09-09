@@ -1,7 +1,6 @@
 package hckrn.simpleexcelmapper.utils;
 
-import hckrn.simpleexcelmapper.annotation.ColumnExcel;
-import lombok.Data;
+import hckrn.simpleexcelmapper.utils.dto.Student;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
@@ -13,7 +12,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class ExcelMapperTest {
+class ExcelToObjMapperTest {
 
     @Test
     void shouldMapExcelToObjectsWhenExcelIsProvided() throws IOException {
@@ -21,7 +20,7 @@ class ExcelMapperTest {
         assertThat(resourceAsStream).isNotNull();
         Workbook workbook = new XSSFWorkbook(resourceAsStream);
 
-        var excelMapper = new ExcelMapper();
+        ExcelMapper excelMapper = new ExcelMapperImpl();
         Map<String, List<Student>> objs = excelMapper.mapWorkbookToObjs(workbook, Student.class);
         assertThat(objs).isNotNull().size().isEqualTo(3);
         assertThat(objs.keySet()).contains("Class A").contains("Class B").contains("Class C");
@@ -29,21 +28,5 @@ class ExcelMapperTest {
                     assertThat(students).isNotNull().size().isEqualTo(4);
                 }
         );
-    }
-
-    @Data
-    static class Student {
-        @ColumnExcel(name = "Student ID", position = 0)
-        private Integer studentId;
-
-        @ColumnExcel(name = "Name", position = 1)
-        private String name;
-
-        @ColumnExcel(name = "Age", position = 2)
-        private Integer age;
-
-        public String toString() {
-            return "Student(studentId=" + this.getStudentId() + ", name=" + this.getName() + ", age=" + this.getAge() + ")";
-        }
     }
 }

@@ -12,7 +12,9 @@ public @interface ColumnExcelTotalFormula {
 
     String name() default "";
 
+    boolean useValue() default false;
+
     int position();
 
-    ColumnExcelStyle headerStyle() default @ColumnExcelStyle;
+    ColumnExcelStyle cellStyle() default @ColumnExcelStyle;
 }
