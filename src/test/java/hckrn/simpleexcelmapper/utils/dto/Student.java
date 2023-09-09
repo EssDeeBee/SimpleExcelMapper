@@ -1,27 +1,35 @@
 package hckrn.simpleexcelmapper.utils.dto;
 
-import hckrn.simpleexcelmapper.annotation.ColumnExcel;
-import hckrn.simpleexcelmapper.annotation.ColumnExcelFormula;
-import hckrn.simpleexcelmapper.annotation.ColumnExcelStyle;
-import hckrn.simpleexcelmapper.annotation.ColumnExcelTotalFormula;
+import hckrn.simpleexcelmapper.annotation.*;
+import hckrn.simpleexcelmapper.format.ExcelColumnCellTextColor;
+import hckrn.simpleexcelmapper.format.ExcelColumnDataFormat;
 import lombok.Data;
 import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.util.CellAddress;
 
+import java.time.LocalDate;
+
 
 @Data
+@DocumentExcel
 public class Student {
-    @ColumnExcel(applyNames = "Student ID", position = 0,
-            headerStyle = @ColumnExcelStyle(fontSize = 40, cellColor = IndexedColors.CORAL))
+    @ColumnExcel(applyNames = "Student Id", position = 0,
+            headerStyle = @ColumnExcelStyle(fontSize = 15, cellColor = IndexedColors.CORAL),
+            cellStyle = @ColumnExcelStyle(fontColor = ExcelColumnCellTextColor.WHITE, cellColor = IndexedColors.BLUE))
     private Integer studentId;
 
-    @ColumnExcel(applyNames = "Name", position = 1)
+    @ColumnExcel(applyNames = "Name", position = 1,
+            headerStyle = @ColumnExcelStyle(fontSize = 13, isCentreAlignment = false, cellColor = IndexedColors.BROWN))
     private String name;
 
     @ColumnExcel(applyNames = "Age", position = 2)
     private Integer age;
 
-    @ColumnExcelFormula(name = "Age n Id", position = 3)
+    @ColumnExcel(applyNames = "Admission Date ", position = 3,
+            cellStyle = @ColumnExcelStyle(cellTypePattern = ExcelColumnDataFormat.DATE))
+    private LocalDate admissionDate;
+
+    @ColumnExcelFormula(name = "Age n Id", position = 4)
     public String idAndAge(int rowNum) {
         return "IFERROR(" + new CellAddress(rowNum, 0).formatAsString()
                 + "*"

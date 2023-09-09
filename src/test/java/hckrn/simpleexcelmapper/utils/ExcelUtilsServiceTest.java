@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedList;
@@ -52,6 +53,7 @@ class ExcelUtilsServiceTest {
             student.setStudentId(i + 1);
             student.setName(getRandomName());
             student.setAge(secureRandom.nextInt(16, 40));
+            student.setAdmissionDate(LocalDate.now().minusMonths(secureRandom.nextInt(0, 5)));
             students.add(student);
         }
         return students;

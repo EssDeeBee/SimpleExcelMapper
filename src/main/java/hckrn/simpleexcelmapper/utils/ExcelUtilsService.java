@@ -5,7 +5,6 @@ import hckrn.simpleexcelmapper.annotation.ColumnExcel;
 import hckrn.simpleexcelmapper.annotation.ColumnExcelFormula;
 import hckrn.simpleexcelmapper.annotation.ColumnExcelStyle;
 import hckrn.simpleexcelmapper.annotation.ColumnExcelTotalFormula;
-import hckrn.simpleexcelmapper.exception.ExcelHeaderNotFoundException;
 import hckrn.simpleexcelmapper.exception.ExcelMapperException;
 import hckrn.simpleexcelmapper.format.ExcelColumnCellTextColor;
 import hckrn.simpleexcelmapper.format.ExcelColumnDataFormat;
@@ -13,163 +12,60 @@ import hckrn.simpleexcelmapper.format.ExcelColumnFont;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.beans.IntrospectionException;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
-import java.lang.reflect.*;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.math.BigDecimal;
 import java.sql.Date;
-import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 
 import static java.util.Objects.nonNull;
-import static org.apache.poi.ss.usermodel.CellType.*;
 
 @Slf4j
 public class ExcelUtilsService {
 
-    @SneakyThrows
-    public <T> List<T> readTableFromSheet(Sheet sheet, Class<T> clazz) {
-        List<T> tArrayList = new ArrayList<>();
-
-        ExcelHeaders excelHeaders = findHeaders(clazz, sheet);
-        int dataRowNumber = excelHeaders.getHeadersRowNumber() + 1;
-        int endRowNum = sheet.getLastRowNum();
-
-        for (; dataRowNumber <= endRowNum; dataRowNumber++) {
-            tArrayList.add(createObjectFromDeclaredExcelColumns(sheet.getRow(dataRowNumber), clazz, excelHeaders));
-        }
-        return tArrayList;
+    public <T> Workbook createWorkbookFromObject(List<T> reportObjects) {
+        return createWorkbookFromObject(reportObjects, 0, "Report_" + LocalDate.now());
     }
 
-    @SneakyThrows
-    public <T> T createObjectFromDeclaredExcelColumns(Row row, Class<T> reportClass, ExcelHeaders excelHeaders) {
-        T tObject = createNewEntityInstance(reportClass);
-        HashMap<String, Integer> excelIndexes = excelHeaders.getHeadersIndexes();
+    public <T> Workbook createReportWorkbook(List<T> reportObjects, int startRowNumber) {
+        return createWorkbookFromObject(reportObjects, startRowNumber, "Report_" + LocalDate.now());
+    }
 
-        for (PropertyDescriptor propertyDescriptor : Introspector.getBeanInfo(tObject.getClass()).getPropertyDescriptors()) {
-            Integer cellIndex = excelIndexes.get(propertyDescriptor.getName());
+    public <T> Workbook createWorkbookFromObject(List<T> reportObjects, int startRowNumber, String sheetName) {
 
-            if (cellIndex != null) {
-                Method writeMethod = propertyDescriptor.getWriteMethod();
-                Parameter[] parameters = writeMethod.getParameters();
+        if (nonNull(reportObjects) && !reportObjects.isEmpty()) {
+            Class<?> aClass = reportObjects.stream().findFirst().get().getClass();
+            Workbook workbook = new XSSFWorkbook();
+            Sheet sheet = workbook.createSheet(sheetName);
+            int proceedRowNumber = startRowNumber;
 
-                if (parameters.length == 1) {
-                    Cell cell = row.getCell(cellIndex);
-                    if (cell != null) {
-                        if (parameters[0].getType().isAssignableFrom(String.class)) {
-                            writeMethod.invoke(tObject, getStringCellValueOrNull(cell));
+            Row headerRow = sheet.createRow(startRowNumber);
+            createHeadersFromDeclaredExcelColumns(headerRow, aClass);
+            startRowNumber++;
+            proceedRowNumber++;
 
-                        } else if (parameters[0].getType().isAssignableFrom(Double.class)) {
-                            writeMethod.invoke(tObject, getDoubleCellValueOrNullFromMergedCells(cell));
-
-                        } else if (parameters[0].getType().isAssignableFrom(Date.class)) {
-                            writeMethod.invoke(tObject, getDateCellOrNull(cell));
-
-                        } else if (!parameters[0].getType().isPrimitive() && parameters[0].getType().isAssignableFrom(Integer.class)) {
-                            writeMethod.invoke(tObject, getDoubleCellValueOrNull(cell) == null ? null : getDoubleCellValueOrNull(cell).intValue());
-
-                        } else if (parameters[0].getType().isPrimitive() && parameters[0].getType().isAssignableFrom(Integer.class)) {
-                            writeMethod.invoke(tObject, getDoubleCellValueOrNull(cell) == null ? 0 : getDoubleCellValueOrNull(cell).intValue());
-                        }
-                    }
-                } else {
-                    log.debug(writeMethod.getName() + " method ignored while creating entity param, reason: method has not less or more than one parameter");
-                }
+            for (T report : reportObjects) {
+                Row bodyRow = sheet.createRow(proceedRowNumber);
+                createCellsFromDeclaredExcelColumns(bodyRow, report);
+                proceedRowNumber++;
             }
-        }
-        return tObject;
-    }
 
-    public final Double getDoubleCellValueOrNull(Cell cell) {
-        Double cellValue = null;
-        if (nonNull(cell) && (cell.getCellType().equals(NUMERIC) || cell.getCellType().equals(FORMULA))) {
-            try {
-                cellValue = cell.getNumericCellValue();
-            } catch (NumberFormatException | IllegalStateException ex) {
-                log.debug(ex.getMessage());
-            }
-        }
-        return cellValue;
-    }
+            createTotalFormula(aClass, sheet.createRow(proceedRowNumber), startRowNumber);
 
-    private Double getDoubleCellValueOrNullFromMergedCells(Cell cell) {
-        if (nonNull(cell)) {
-            List<CellRangeAddress> cellAddresses = cell.getRow().getSheet().getMergedRegions();
-            for (var cellAddress : cellAddresses) {
-                if (cellAddress.isInRange(cell)) {
-                    Cell firstMergedCell = cell.getRow().getSheet().getRow(cellAddress.getFirstRow()).getCell(cellAddress.getFirstColumn());
-                    return getDoubleCellValueOrNull(firstMergedCell);
-                }
-            }
-        }
-        return getDoubleCellValueOrNull(cell);
-    }
-
-    public final String getStringCellValueOrNull(Cell cell) {
-        String cellValue = null;
-        if (cell != null) {
-
-            if (cell.getCellType().equals(CellType.STRING) || cell.getCellType().equals(FORMULA)) {
-                try {
-                    cellValue = cell.getStringCellValue();
-                } catch (NumberFormatException | IllegalStateException ex) {
-                    log.debug(ex.getMessage());
-                }
-            } else if (cell.getCellType().equals(NUMERIC)) {
-                try {
-                    //TODO check other options to format
-                    NumberFormat fmt = NumberFormat.getInstance();
-                    fmt.setGroupingUsed(false);
-                    fmt.setMaximumIntegerDigits(999);
-                    fmt.setMaximumFractionDigits(999);
-
-                    double numericCellValue = cell.getNumericCellValue();
-                    cellValue = fmt.format(numericCellValue);
-
-                } catch (NumberFormatException | IllegalStateException ex) {
-                    log.debug(ex.getMessage());
-                }
-            }
-        }
-        return cellValue;
-
-
-    }
-
-    private LocalDate getDateCellOrNull(Cell cell) {
-        if (nonNull(cell)) {
-            CellType cellType = cell.getCellType();
-            if (NUMERIC.equals(cellType) || STRING.equals(cellType) || FORMULA.equals(cellType)) {
-                try {
-                    java.util.Date cellValue = cell.getDateCellValue();
-                    return cellValue.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-                } catch (NumberFormatException | IllegalStateException ex) {
-                    log.debug(ex.getMessage());
-                }
-            }
-        }
-        return null;
-    }
-
-    private <T> T createNewEntityInstance(Class<T> t) {
-        try {
-            Constructor<?>[] constructors = t.getConstructors();
-            Constructor<?> noArgsConstructor = Arrays.stream(constructors).filter(constructor -> constructor.getParameterCount() == 0)
-                    .findFirst()
-                    .orElseThrow(() -> new ExcelMapperException("Could not find no args constructor for: " + t.getName()));
-
-            return (T) noArgsConstructor.newInstance();
-        } catch (IllegalAccessException | InvocationTargetException | InstantiationException ex) {
-            throw new ExcelMapperException(ex);
+            log.info("Total rows number is: " + proceedRowNumber);
+            autosizeAllByRow(headerRow);
+            return workbook;
+        } else {
+            throw new ExcelMapperException("Couldn't get object from given list: " + reportObjects);
         }
     }
 
@@ -236,7 +132,6 @@ public class ExcelUtilsService {
         }
     }
 
-
     private <T> void createCellFromDeclaredExcelColumns(Row row, T tObject, PropertyDescriptor propertyDescriptor) {
         try {
             Field field = tObject.getClass().getDeclaredField(propertyDescriptor.getName());
@@ -271,6 +166,9 @@ public class ExcelUtilsService {
 
         } else if (returnType.isAssignableFrom(Date.class)) {
             cell.setCellValue(java.util.Date.from(((Date) invokeResult).toInstant()));
+
+        } else if (returnType.isAssignableFrom(LocalDate.class)) {
+            cell.setCellValue(java.util.Date.from(((LocalDate) invokeResult).atStartOfDay(ZoneId.systemDefault()).toInstant()));
 
         } else if (returnType.isAssignableFrom(Integer.class)) {
             cell.setCellValue((Integer) invokeResult);
@@ -397,142 +295,6 @@ public class ExcelUtilsService {
 
             cellStyle.setFont(font);
             cell.setCellStyle(cellStyle);
-        }
-    }
-
-    private <T> ExcelHeaders findHeaders(Class<T> clazz, Sheet sheet) {
-        return findHeaders(clazz, sheet, sheet.getLastRowNum());
-    }
-
-    private <T> ExcelHeaders findHeaders(Class<T> clazz, Sheet sheet, int rowsForCheck) {
-
-        if (rowsForCheck <= 0) {
-            throw new ExcelMapperException("Number rows for checking cannot be less or equals zero");
-        }
-
-        try {
-            HashMap<String, List<String>> fieldsWithoutIndex = new HashMap<>();
-            HashMap<String, Integer> fieldsToIndex = new HashMap<>();
-            PropertyDescriptor[] propertyDescriptors = Introspector.getBeanInfo(clazz).getPropertyDescriptors();
-            List<String> uniqueApplyNames = new ArrayList<>(propertyDescriptors.length * 3);
-
-            forExcelRows:
-            for (int rowNum = 0; rowNum < rowsForCheck; rowNum++) {
-                Row headerRow = sheet.getRow(rowNum);
-                if (headerRow != null) {
-                    fieldsWithoutIndex.clear();
-                    fieldsToIndex.clear();
-
-                    forApplyNames:
-                    for (PropertyDescriptor propertyDescriptor : propertyDescriptors) {
-                        String propertyName = propertyDescriptor.getName();
-                        uniqueApplyNames.clear();
-
-
-                        try {
-                            Field declaredField = clazz.getDeclaredField(propertyName);
-
-                            //Getting annotated fields
-                            if (declaredField != null) {
-                                ColumnExcel excelColumn = declaredField.getDeclaredAnnotation(ColumnExcel.class);
-
-                                if (excelColumn != null) {
-                                    String[] applyNames = excelColumn.applyNames();
-
-                                    //Getting indexes for annotated fields
-                                    for (int j = 0; j < applyNames.length; j++) {
-
-                                        String applyNameForComparing = applyNames[j]
-                                                .replace(" ", "")
-                                                .toUpperCase()
-                                                .strip();
-
-                                        if (uniqueApplyNames.contains(applyNameForComparing)) {
-                                            throw new RuntimeException("Duplicate header was found: " + applyNames[j]);
-                                        } else {
-                                            uniqueApplyNames.add(applyNameForComparing);
-                                        }
-
-                                        for (Cell cell : sheet.getRow(rowNum)) {
-                                            String cellValue = getStringCellValueOrNull(cell);
-                                            if (cellValue != null
-                                                    && applyNameForComparing.equalsIgnoreCase(cellValue
-                                                    .replace(" ", "")
-                                                    .replace("\n", "")
-                                                    .toUpperCase()
-                                                    .strip())) {
-                                                if (fieldsToIndex.get(propertyName) != null)
-                                                    throw new RuntimeException("Duplicate header was found: " + propertyName);
-
-                                                fieldsToIndex.put(propertyName, cell.getColumnIndex());
-                                                continue forApplyNames;
-                                            }
-                                        }
-
-                                        if (j == (applyNames.length - 1)) {
-                                            log.debug("Headers not found. Row: " + rowNum + " Header: " + applyNames[0] + "\nSwitching to the next row");
-                                            fieldsWithoutIndex.put(propertyName, List.of(applyNames));
-                                            continue forExcelRows;
-                                        }
-                                    }
-                                }
-                            }
-                        } catch (NoSuchFieldException ex) {
-                            ex.getMessage();
-                        }
-
-                    }
-                }
-                if (fieldsWithoutIndex.isEmpty() && !fieldsToIndex.isEmpty()) {
-                    return new ExcelHeaders(fieldsToIndex, rowNum);
-
-                }
-            }
-
-            log.error("Headers are not found! Headers were looking for class: " + clazz.getName()
-                    + " on sheet: " + sheet.getSheetName()
-                    + " for first: " + rowsForCheck + " rows");
-            throw new ExcelHeaderNotFoundException(null, "", "for first: " + rowsForCheck + " rows");
-
-        } catch (IntrospectionException ex) {
-            throw new ExcelMapperException(ex);
-        }
-    }
-
-    public <T> Workbook createWorkbookFromObject(List<T> reportObjects) {
-        return createWorkbookFromObject(reportObjects, 0, "Report_" + LocalDate.now());
-    }
-
-    public <T> Workbook createReportWorkbook(List<T> reportObjects, int startRowNumber) {
-        return createWorkbookFromObject(reportObjects, startRowNumber, "Report_" + LocalDate.now());
-    }
-
-    public <T> Workbook createWorkbookFromObject(List<T> reportObjects, int startRowNumber, String sheetName) {
-
-        if (nonNull(reportObjects) && !reportObjects.isEmpty()) {
-            Class<?> aClass = reportObjects.stream().findFirst().get().getClass();
-            Workbook workbook = new XSSFWorkbook();
-            Sheet sheet = workbook.createSheet(sheetName);
-            int proceedRowNumber = startRowNumber;
-
-            Row headerRow = sheet.createRow(startRowNumber);
-            createHeadersFromDeclaredExcelColumns(headerRow, aClass);
-            startRowNumber++;
-            proceedRowNumber++;
-
-            for (T report : reportObjects) {
-                Row bodyRow = sheet.createRow(proceedRowNumber);
-                createCellsFromDeclaredExcelColumns(bodyRow, report);
-                proceedRowNumber++;
-            }
-
-            createTotalFormula(aClass, sheet.createRow(proceedRowNumber), startRowNumber);
-
-            log.info("Total rows number is: " + proceedRowNumber);
-            autosizeAllByRow(headerRow);
-            return workbook;
-        } else {
-            throw new ExcelMapperException("Couldn't get object from given list: " + reportObjects);
         }
     }
 
