@@ -6,6 +6,7 @@ import hckrn.simpleexcelmapper.annotation.ColumnExcelFormula;
 import hckrn.simpleexcelmapper.annotation.ColumnExcelStyle;
 import hckrn.simpleexcelmapper.annotation.ColumnExcelTotalFormula;
 import hckrn.simpleexcelmapper.exception.ExcelHeaderNotFoundException;
+import hckrn.simpleexcelmapper.exception.ExcelMapperException;
 import hckrn.simpleexcelmapper.format.ExcelColumnCellTextColor;
 import hckrn.simpleexcelmapper.format.ExcelColumnDataFormat;
 import hckrn.simpleexcelmapper.format.ExcelColumnFont;
@@ -25,8 +26,12 @@ import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+
+import static java.util.Objects.nonNull;
+import static org.apache.poi.ss.usermodel.CellType.*;
 
 @Slf4j
 public class ExcelUtilsService {
@@ -45,12 +50,8 @@ public class ExcelUtilsService {
         return tArrayList;
     }
 
-    public <T> T createObjectFromDeclaredExcelColumns(Row row, Class<T> reportClass, ExcelHeaders excelHeaders)
-            throws
-            IllegalAccessException,
-            InvocationTargetException,
-            IntrospectionException {
-
+    @SneakyThrows
+    public <T> T createObjectFromDeclaredExcelColumns(Row row, Class<T> reportClass, ExcelHeaders excelHeaders) {
         T tObject = createNewEntityInstance(reportClass);
         HashMap<String, Integer> excelIndexes = excelHeaders.getHeadersIndexes();
 
@@ -90,26 +91,22 @@ public class ExcelUtilsService {
 
     public final Double getDoubleCellValueOrNull(Cell cell) {
         Double cellValue = null;
-        if (cell != null) {
-            if (cell.getCellType().equals(CellType.NUMERIC) || cell.getCellType().equals(CellType.FORMULA)) {
-                try {
-                    cellValue = cell.getNumericCellValue();
-                } catch (NumberFormatException | IllegalStateException ex) {
-                    log.debug(ex.getMessage());
-                }
+        if (nonNull(cell) && (cell.getCellType().equals(NUMERIC) || cell.getCellType().equals(FORMULA))) {
+            try {
+                cellValue = cell.getNumericCellValue();
+            } catch (NumberFormatException | IllegalStateException ex) {
+                log.debug(ex.getMessage());
             }
         }
         return cellValue;
     }
 
-    public final Double getDoubleCellValueOrNullFromMergedCells(Cell cell) {
-        if (cell != null) {
+    private Double getDoubleCellValueOrNullFromMergedCells(Cell cell) {
+        if (nonNull(cell)) {
             List<CellRangeAddress> cellAddresses = cell.getRow().getSheet().getMergedRegions();
-
-            for (CellRangeAddress cellAddress : cellAddresses) {
+            for (var cellAddress : cellAddresses) {
                 if (cellAddress.isInRange(cell)) {
                     Cell firstMergedCell = cell.getRow().getSheet().getRow(cellAddress.getFirstRow()).getCell(cellAddress.getFirstColumn());
-
                     return getDoubleCellValueOrNull(firstMergedCell);
                 }
             }
@@ -121,13 +118,13 @@ public class ExcelUtilsService {
         String cellValue = null;
         if (cell != null) {
 
-            if (cell.getCellType().equals(CellType.STRING) || cell.getCellType().equals(CellType.FORMULA)) {
+            if (cell.getCellType().equals(CellType.STRING) || cell.getCellType().equals(FORMULA)) {
                 try {
                     cellValue = cell.getStringCellValue();
                 } catch (NumberFormatException | IllegalStateException ex) {
                     log.debug(ex.getMessage());
                 }
-            } else if (cell.getCellType().equals(CellType.NUMERIC)) {
+            } else if (cell.getCellType().equals(NUMERIC)) {
                 try {
                     //TODO check other options to format
                     NumberFormat fmt = NumberFormat.getInstance();
@@ -148,13 +145,13 @@ public class ExcelUtilsService {
 
     }
 
-    public final Date getDateCellOrNull(Cell cell) {
-        if (cell != null) {
-            if (cell.getCellType().equals(CellType.NUMERIC) || cell.getCellType().equals(CellType.STRING) || cell.getCellType().equals(CellType.FORMULA)) {
+    private LocalDate getDateCellOrNull(Cell cell) {
+        if (nonNull(cell)) {
+            CellType cellType = cell.getCellType();
+            if (NUMERIC.equals(cellType) || STRING.equals(cellType) || FORMULA.equals(cellType)) {
                 try {
                     java.util.Date cellValue = cell.getDateCellValue();
-                    return Date.valueOf(cellValue.toInstant().atZone(ZoneId.systemDefault()).toLocalDate());
-
+                    return cellValue.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
                 } catch (NumberFormatException | IllegalStateException ex) {
                     log.debug(ex.getMessage());
                 }
@@ -163,33 +160,25 @@ public class ExcelUtilsService {
         return null;
     }
 
-    protected <T> T createNewEntityInstance(Class<T> t) {
+    private <T> T createNewEntityInstance(Class<T> t) {
         try {
-            Constructor[] constructors = t.getConstructors();
-            for (Constructor constructor : constructors) {
-                if (constructor.getParameterCount() == 0) {
-                    return (T) constructor.newInstance();
-                }
-            }
+            Constructor<?>[] constructors = t.getConstructors();
+            Constructor<?> noArgsConstructor = Arrays.stream(constructors).filter(constructor -> constructor.getParameterCount() == 0)
+                    .findFirst()
+                    .orElseThrow(() -> new ExcelMapperException("Could not find no args constructor for: " + t.getName()));
 
+            return (T) noArgsConstructor.newInstance();
         } catch (IllegalAccessException | InvocationTargetException | InstantiationException ex) {
-            throw new RuntimeException(ex);
+            throw new ExcelMapperException(ex);
         }
-        throw new RuntimeException();
     }
 
-    public final <T> void createHeadersFromDeclaredExcelColumns(Row row, Class<T> clazz) {
+    private <T> void createHeadersFromDeclaredExcelColumns(Row row, Class<T> clazz) {
         try {
             PropertyDescriptor[] propertyDescriptors = Introspector.getBeanInfo(clazz).getPropertyDescriptors();
 
-            for (PropertyDescriptor propertyDescriptor : propertyDescriptors) {
-                try {
-                    createHeaderFromDeclaredExcelColumns(row, clazz, propertyDescriptor);
-                } catch (NoSuchFieldException e) {
-                    log.debug(e.getLocalizedMessage());
-                }
-
-            }
+            for (var propertyDescriptor : propertyDescriptors)
+                createHeaderFromDeclaredExcelColumns(row, clazz, propertyDescriptor);
 
             for (Method method : clazz.getDeclaredMethods())
                 createHeaderFromDeclaredExcelFormula(row, method);
@@ -199,26 +188,27 @@ public class ExcelUtilsService {
         }
     }
 
-    protected <T> void createHeaderFromDeclaredExcelColumns(Row row, Class<T> clazz, PropertyDescriptor propertyDescriptor) throws NoSuchFieldException {
-        Field field = clazz.getDeclaredField(propertyDescriptor.getName());
+    private <T> void createHeaderFromDeclaredExcelColumns(Row row, Class<T> clazz, PropertyDescriptor propertyDescriptor) {
+        try {
+            Field field = clazz.getDeclaredField(propertyDescriptor.getName());
 
-        ColumnExcel columnExcel = field.getDeclaredAnnotation(ColumnExcel.class);
-        if (columnExcel != null) {
-            createHeader(row, columnExcel.position(), columnExcel.applyNames()[0], columnExcel.headerStyle());
+            ColumnExcel columnExcel = field.getDeclaredAnnotation(ColumnExcel.class);
+            if (columnExcel != null) {
+                createHeader(row, columnExcel.position(), columnExcel.applyNames()[0], columnExcel.headerStyle());
+            }
+        } catch (NoSuchFieldException e) {
+            log.debug(e.getLocalizedMessage());
         }
-
-
     }
 
-    protected void createHeaderFromDeclaredExcelFormula(Row row, Method method) {
-        ColumnExcelFormula columnExcelFormula = method.getDeclaredAnnotation(ColumnExcelFormula.class);
+    private void createHeaderFromDeclaredExcelFormula(Row row, Method method) {
+        var columnExcelFormula = method.getDeclaredAnnotation(ColumnExcelFormula.class);
 
-        if (columnExcelFormula != null) {
+        if (nonNull(columnExcelFormula))
             createHeader(row, columnExcelFormula.position(), columnExcelFormula.name(), columnExcelFormula.headerStyle());
-        }
     }
 
-    protected void createHeader(Row row, int position, String name, ColumnExcelStyle columnExcelStyle) {
+    private void createHeader(Row row, int position, String name, ColumnExcelStyle columnExcelStyle) {
         Cell cell = row.createCell(position);
         cell.setCellValue(name);
 
@@ -226,17 +216,11 @@ public class ExcelUtilsService {
         row.getSheet().autoSizeColumn(cell.getColumnIndex());
     }
 
-    public final <T> void createCellsFromDeclaredExcelColumns(Row row, T tObject) {
+    private <T> void createCellsFromDeclaredExcelColumns(Row row, T tObject) {
         try {
             PropertyDescriptor[] propertyDescriptors = Introspector.getBeanInfo(tObject.getClass()).getPropertyDescriptors();
-
             for (PropertyDescriptor propertyDescriptor : propertyDescriptors) {
-                try {
-                    createCellFromDeclaredExcelColumns(row, tObject, propertyDescriptor);
-                } catch (NoSuchFieldException | InvocationTargetException | IllegalAccessException e) {
-                    log.debug(e.getLocalizedMessage());
-                }
-
+                createCellFromDeclaredExcelColumns(row, tObject, propertyDescriptor);
             }
         } catch (IntrospectionException ex) {
             log.debug(ex.getLocalizedMessage());
@@ -253,49 +237,54 @@ public class ExcelUtilsService {
     }
 
 
-    protected <T> void createCellFromDeclaredExcelColumns(Row row, T tObject, PropertyDescriptor propertyDescriptor) throws NoSuchFieldException, InvocationTargetException, IllegalAccessException {
-        Field field = tObject.getClass().getDeclaredField(propertyDescriptor.getName());
-        Method readMethod = propertyDescriptor.getReadMethod();
+    private <T> void createCellFromDeclaredExcelColumns(Row row, T tObject, PropertyDescriptor propertyDescriptor) {
+        try {
+            Field field = tObject.getClass().getDeclaredField(propertyDescriptor.getName());
+            Method readMethod = propertyDescriptor.getReadMethod();
 
-        ColumnExcel columnExcel = field.getDeclaredAnnotation(ColumnExcel.class);
-        if (columnExcel != null) {
-            Class<?> returnType = readMethod.getReturnType();
-            Cell cell = row.createCell(columnExcel.position());
+            ColumnExcel columnExcel = field.getDeclaredAnnotation(ColumnExcel.class);
+            if (nonNull(columnExcel)) {
+                Class<?> returnType = readMethod.getReturnType();
+                Cell cell = row.createCell(columnExcel.position());
 
-            if (returnType != null) {
                 Object invokeResult = readMethod.invoke(tObject);
-                if (invokeResult != null) {
-
-                    if (returnType.isAssignableFrom(String.class)) {
-                        cell.setCellValue((String) invokeResult);
-
-                    } else if (returnType.isAssignableFrom(Double.class)) {
-                        cell.setCellValue((Double) invokeResult);
-
-                    } else if (returnType.isAssignableFrom(BigDecimal.class)) {
-                        cell.setCellValue(((BigDecimal) invokeResult).doubleValue());
-
-                    } else if (returnType.isAssignableFrom(Date.class)) {
-                        cell.setCellValue(java.util.Date.from(((Date) invokeResult).toInstant()));
-
-                    } else if (returnType.isAssignableFrom(Integer.class)) {
-                        cell.setCellValue((Integer) invokeResult);
-
-                    } else if (returnType.isAssignableFrom(Long.class)) {
-                        cell.setCellValue(((Long) invokeResult).intValue());
-
-                    } else {
-                        log.debug(" Return type for the method: " + readMethod.getName() + " with @ColumnExcel annotation is not supported " +
-                                "for now return type is: " + returnType.getName() + " method is ignored for the reason");
-                    }
+                if (nonNull(invokeResult)) {
+                    defineAndAssignCellValue(returnType, cell, invokeResult, readMethod);
                 }
+                setCellFormatting(cell, columnExcel.cellStyle());
             }
-            setCellFormatting(cell, columnExcel.cellStyle());
+        } catch (NoSuchFieldException | InvocationTargetException | IllegalAccessException e) {
+            log.debug(e.getLocalizedMessage());
+        }
+
+    }
+
+    private void defineAndAssignCellValue(Class<?> returnType, Cell cell, Object invokeResult, Method readMethod) {
+        if (returnType.isAssignableFrom(String.class)) {
+            cell.setCellValue((String) invokeResult);
+
+        } else if (returnType.isAssignableFrom(Double.class)) {
+            cell.setCellValue((Double) invokeResult);
+
+        } else if (returnType.isAssignableFrom(BigDecimal.class)) {
+            cell.setCellValue(((BigDecimal) invokeResult).doubleValue());
+
+        } else if (returnType.isAssignableFrom(Date.class)) {
+            cell.setCellValue(java.util.Date.from(((Date) invokeResult).toInstant()));
+
+        } else if (returnType.isAssignableFrom(Integer.class)) {
+            cell.setCellValue((Integer) invokeResult);
+
+        } else if (returnType.isAssignableFrom(Long.class)) {
+            cell.setCellValue(((Long) invokeResult).intValue());
+        } else {
+            log.debug(" Return type for the method: " + readMethod.getName() + " with @ColumnExcel annotation is not supported " +
+                    "for now return type is: " + returnType.getName() + " method is ignored for the reason");
         }
     }
 
     @SneakyThrows
-    public <T> void createTotalFormula(Class<T> tClazz, Row row, int firstRowNum) {
+    private <T> void createTotalFormula(Class<T> tClazz, Row row, int firstRowNum) {
         Method[] methods = tClazz.getDeclaredMethods();
         for (Method method : methods) {
             ColumnExcelTotalFormula columnExcelTotalFormula = method.getAnnotation(ColumnExcelTotalFormula.class);
@@ -350,25 +339,23 @@ public class ExcelUtilsService {
         return cell;
     }
 
-    protected <T> void createCellFromDeclaredExcelFormula(Row row, T tObject, Method readMethod) throws IllegalAccessException, InvocationTargetException {
+    private <T> void createCellFromDeclaredExcelFormula(Row row, T tObject, Method readMethod) throws IllegalAccessException, InvocationTargetException {
         ColumnExcelFormula columnExcelFormula = readMethod.getDeclaredAnnotation(ColumnExcelFormula.class);
         if (columnExcelFormula != null) {
             Class<?> returnType = readMethod.getReturnType();
             Cell cell = row.createCell(columnExcelFormula.position());
 
-            if (returnType != null) {
-                if (returnType.isAssignableFrom(String.class)) {
-                    cell.setCellFormula((String) readMethod.invoke(tObject, row.getRowNum()));
-                } else {
-                    log.debug(" Return type for the method: " + readMethod.getName() + " with @ColumnExcelFormula annotation has to be String " +
-                            "and now it's: " + returnType.getName() + " method is ignored for the reason");
-                }
+            if (returnType.isAssignableFrom(String.class)) {
+                cell.setCellFormula((String) readMethod.invoke(tObject, row.getRowNum()));
+            } else {
+                log.debug(" Return type for the method: " + readMethod.getName() + " with @ColumnExcelFormula annotation has to be String " +
+                        "and now it's: " + returnType.getName() + " method is ignored for the reason");
             }
             setCellFormatting(cell, columnExcelFormula.cellStyle());
         }
     }
 
-    protected void setCellFormatting(Cell cell, ColumnExcelStyle columnExcelStyle) {
+    private void setCellFormatting(Cell cell, ColumnExcelStyle columnExcelStyle) {
         if (columnExcelStyle != null) {
             CellStyle cellStyle = cell.getRow().getSheet().getWorkbook().createCellStyle();
 
@@ -413,14 +400,14 @@ public class ExcelUtilsService {
         }
     }
 
-    public <T> ExcelHeaders findHeaders(Class<T> clazz, Sheet sheet) {
+    private <T> ExcelHeaders findHeaders(Class<T> clazz, Sheet sheet) {
         return findHeaders(clazz, sheet, sheet.getLastRowNum());
     }
 
-    public <T> ExcelHeaders findHeaders(Class<T> clazz, Sheet sheet, int rowsForCheck) {
+    private <T> ExcelHeaders findHeaders(Class<T> clazz, Sheet sheet, int rowsForCheck) {
 
         if (rowsForCheck <= 0) {
-            throw new RuntimeException("Number rows for checking cannot be less or equals zero");
+            throw new ExcelMapperException("Number rows for checking cannot be less or equals zero");
         }
 
         try {
@@ -508,28 +495,28 @@ public class ExcelUtilsService {
             throw new ExcelHeaderNotFoundException(null, "", "for first: " + rowsForCheck + " rows");
 
         } catch (IntrospectionException ex) {
-            throw new RuntimeException(ex);
+            throw new ExcelMapperException(ex);
         }
     }
 
     public <T> Workbook createWorkbookFromObject(List<T> reportObjects) {
-        return createWorkbookFromObject(reportObjects, 0, "Report_" + LocalDate.now().toString());
+        return createWorkbookFromObject(reportObjects, 0, "Report_" + LocalDate.now());
     }
 
     public <T> Workbook createReportWorkbook(List<T> reportObjects, int startRowNumber) {
-        return createWorkbookFromObject(reportObjects, startRowNumber, "Report_" + LocalDate.now().toString());
+        return createWorkbookFromObject(reportObjects, startRowNumber, "Report_" + LocalDate.now());
     }
 
     public <T> Workbook createWorkbookFromObject(List<T> reportObjects, int startRowNumber, String sheetName) {
 
-        if (reportObjects.stream().findFirst().isPresent()) {
-            T obj = reportObjects.stream().findFirst().get();
+        if (nonNull(reportObjects) && !reportObjects.isEmpty()) {
+            Class<?> aClass = reportObjects.stream().findFirst().get().getClass();
             Workbook workbook = new XSSFWorkbook();
             Sheet sheet = workbook.createSheet(sheetName);
             int proceedRowNumber = startRowNumber;
 
             Row headerRow = sheet.createRow(startRowNumber);
-            createHeadersFromDeclaredExcelColumns(headerRow, obj.getClass());
+            createHeadersFromDeclaredExcelColumns(headerRow, aClass);
             startRowNumber++;
             proceedRowNumber++;
 
@@ -539,13 +526,13 @@ public class ExcelUtilsService {
                 proceedRowNumber++;
             }
 
-            createTotalFormula(obj.getClass(), sheet.createRow(proceedRowNumber), startRowNumber);
+            createTotalFormula(aClass, sheet.createRow(proceedRowNumber), startRowNumber);
 
             log.info("Total rows number is: " + proceedRowNumber);
             autosizeAllByRow(headerRow);
             return workbook;
         } else {
-            throw new RuntimeException("Couldn't get object from given list: " + reportObjects);
+            throw new ExcelMapperException("Couldn't get object from given list: " + reportObjects);
         }
     }
 
