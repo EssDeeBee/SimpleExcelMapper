@@ -12,7 +12,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class ExcelMapperTest {
+class ExcelToObjMapperTest {
 
     @Test
     void shouldMapExcelToObjectsWhenExcelIsProvided() throws IOException {
@@ -20,7 +20,7 @@ class ExcelMapperTest {
         assertThat(resourceAsStream).isNotNull();
         Workbook workbook = new XSSFWorkbook(resourceAsStream);
 
-        var excelMapper = new ExcelMapper();
+        ExcelMapper excelMapper = new ExcelMapperImpl();
         Map<String, List<Student>> objs = excelMapper.mapWorkbookToObjs(workbook, Student.class);
         assertThat(objs).isNotNull().size().isEqualTo(3);
         assertThat(objs.keySet()).contains("Class A").contains("Class B").contains("Class C");

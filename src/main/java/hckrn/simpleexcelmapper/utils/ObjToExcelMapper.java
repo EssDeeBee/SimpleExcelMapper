@@ -30,17 +30,17 @@ import java.util.List;
 import static java.util.Objects.nonNull;
 
 @Slf4j
-public class ExcelUtilsService {
+class ObjToExcelMapper {
 
-    public <T> Workbook createWorkbookFromObject(List<T> reportObjects) {
+    <T> Workbook createWorkbookFromObject(List<T> reportObjects) {
         return createWorkbookFromObject(reportObjects, 0, "Report_" + LocalDate.now());
     }
 
-    public <T> Workbook createReportWorkbook(List<T> reportObjects, int startRowNumber) {
+    <T> Workbook createReportWorkbook(List<T> reportObjects, int startRowNumber) {
         return createWorkbookFromObject(reportObjects, startRowNumber, "Report_" + LocalDate.now());
     }
 
-    public <T> Workbook createWorkbookFromObject(List<T> reportObjects, int startRowNumber, String sheetName) {
+    <T> Workbook createWorkbookFromObject(List<T> reportObjects, int startRowNumber, String sheetName) {
 
         if (nonNull(reportObjects) && !reportObjects.isEmpty()) {
             Class<?> aClass = reportObjects.stream().findFirst().get().getClass();
@@ -61,7 +61,7 @@ public class ExcelUtilsService {
 
             createTotalFormula(aClass, sheet.createRow(proceedRowNumber), startRowNumber);
 
-            log.info("Total rows number is: " + proceedRowNumber);
+            log.debug("Total rows number is: " + proceedRowNumber);
             autosizeAllByRow(headerRow);
             return workbook;
         } else {

@@ -20,7 +20,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class ExcelUtilsServiceTest {
+class ObjToExcelToObjMapperTest {
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Test
@@ -28,15 +28,15 @@ class ExcelUtilsServiceTest {
 
         String fileName = "students-out-" + LocalTime.now().format(DateTimeFormatter.ofPattern("hh.mm.ss")) + ".xlsx";
         List<Student> students = createStudents();
+        ExcelMapper excelMapper = new ExcelMapperImpl();
 
-        Workbook workbookFromObject = new ExcelUtilsService().createWorkbookFromObject(students);
-        try (var fileOutputStream = new FileOutputStream(fileName)) {
+        try (Workbook workbookFromObject = excelMapper.createWorkbookFromObject(students);
+             var fileOutputStream = new FileOutputStream(fileName)) {
             workbookFromObject.write(fileOutputStream);
         }
 
         try (var fileInputStream = new FileInputStream(fileName)) {
             XSSFWorkbook workbook = new XSSFWorkbook(fileInputStream);
-            var excelMapper = new ExcelMapper();
             Map<String, List<Student>> objs = excelMapper.mapWorkbookToObjs(workbook, Student.class);
             assertThat(objs).isNotNull().size().isEqualTo(1);
             objs.forEach((s, sts) -> assertThat(sts).isNotNull().size().isEqualTo(students.size() + 1));
