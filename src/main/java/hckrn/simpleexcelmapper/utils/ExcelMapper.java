@@ -11,8 +11,12 @@ import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
 import java.lang.reflect.*;
 import java.sql.Date;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.*;
+
+import static java.util.Objects.nonNull;
+import static org.apache.poi.ss.usermodel.CellType.*;
 
 
 @Slf4j
@@ -60,7 +64,7 @@ public class ExcelMapper {
                     Parameter[] parameters = writeMethod.getParameters();
                     if (parameters.length == 1) {
                         Cell cell = row.getCell(columnExcel.position());
-                        if (cell != null) {
+                        if (nonNull(cell)) {
                             extractAndWriteValue(parameters, writeMethod, toObject, cell);
                         }
                     } else {
@@ -87,6 +91,9 @@ public class ExcelMapper {
         } else if (type.isAssignableFrom(Date.class)) {
             writeMethod.invoke(toObject, getDateCellOrNull(cell));
 
+        } else if (type.isAssignableFrom(LocalDate.class)) {
+            writeMethod.invoke(toObject, getLocalDateCellOrNull(cell));
+
         } else if (type.isAssignableFrom(Integer.class)) {
             writeMethod.invoke(toObject, getDoubleCellValueOrZero(cell).intValue());
         }
@@ -108,11 +115,14 @@ public class ExcelMapper {
 
     private String getStringCellValueOrEmpty(Cell cell) {
         String cellValue = "";
-        if (cell != null && (cell.getCellType().equals(CellType.STRING) || cell.getCellType().equals(CellType.FORMULA))) {
-            try {
-                cellValue = cell.getStringCellValue();
-            } catch (NumberFormatException | IllegalStateException ex) {
-                log.debug(ex.getMessage());
+        if (nonNull(cell)) {
+            CellType cellType = cell.getCellType();
+            if (STRING.equals(cellType) || FORMULA.equals(cellType)) {
+                try {
+                    cellValue = cell.getStringCellValue();
+                } catch (NumberFormatException | IllegalStateException ex) {
+                    log.debug(ex.getMessage());
+                }
             }
         }
         return cellValue;
@@ -120,26 +130,50 @@ public class ExcelMapper {
 
     private Double getDoubleCellValueOrZero(Cell cell) {
         double cellValue = 0d;
-        if (cell != null && (cell.getCellType().equals(CellType.NUMERIC) || cell.getCellType().equals(CellType.FORMULA))) {
-            try {
-                cellValue = cell.getNumericCellValue();
-            } catch (NumberFormatException | IllegalStateException ex) {
-                log.debug(ex.getMessage());
+        if (nonNull(cell)) {
+            CellType cellType = cell.getCellType();
+            if (NUMERIC.equals(cellType) || FORMULA.equals(cellType)) {
+                try {
+                    cellValue = cell.getNumericCellValue();
+                } catch (NumberFormatException | IllegalStateException ex) {
+                    log.debug(ex.getMessage());
+                }
             }
         }
         return cellValue;
     }
 
     private Date getDateCellOrNull(Cell cell) {
-        if (cell != null && (cell.getCellType().equals(CellType.NUMERIC) || cell.getCellType().equals(CellType.STRING) || cell.getCellType().equals(CellType.FORMULA))) {
-            try {
-                java.util.Date cellValue = cell.getDateCellValue();
-                return Date.valueOf(cellValue.toInstant().atZone(ZoneId.systemDefault()).toLocalDate());
+        Date date = null;
+        if (nonNull(cell)) {
+            CellType cellType = cell.getCellType();
+            if (NUMERIC.equals(cellType) || STRING.equals(cellType) || FORMULA.equals(cellType)) {
+                try {
+                    java.util.Date cellValue = cell.getDateCellValue();
+                    date = Date.valueOf(cellValue.toInstant().atZone(ZoneId.systemDefault()).toLocalDate());
 
-            } catch (NumberFormatException | IllegalStateException ex) {
-                log.debug(ex.getMessage());
+                } catch (NumberFormatException | IllegalStateException ex) {
+                    log.debug(ex.getMessage());
+                }
             }
         }
-        return null;
+        return date;
+    }
+
+    private LocalDate getLocalDateCellOrNull(Cell cell) {
+        LocalDate localDate = null;
+        if (nonNull(cell)) {
+            CellType cellType = cell.getCellType();
+            if (NUMERIC.equals(cellType) || STRING.equals(cellType) || FORMULA.equals(cellType)) {
+                try {
+                    java.util.Date cellValue = cell.getDateCellValue();
+                    localDate = cellValue.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+
+                } catch (NumberFormatException | IllegalStateException ex) {
+                    log.debug(ex.getMessage());
+                }
+            }
+        }
+        return localDate;
     }
 }

@@ -89,7 +89,7 @@ public class ExcelUtilsService {
             Field field = clazz.getDeclaredField(propertyDescriptor.getName());
 
             ColumnExcel columnExcel = field.getDeclaredAnnotation(ColumnExcel.class);
-            if (columnExcel != null) {
+            if (nonNull(columnExcel)) {
                 createHeader(row, columnExcel.position(), columnExcel.applyNames()[0], columnExcel.headerStyle());
             }
         } catch (NoSuchFieldException e) {
@@ -210,29 +210,24 @@ public class ExcelUtilsService {
         FormulaEvaluator evaluator = row.getSheet().getWorkbook().getCreationHelper().createFormulaEvaluator();
         CellValue cellValue = evaluator.evaluate(cell);
 
-
         switch (cellValue.getCellType()) {
-            case BOOLEAN:
+            case BOOLEAN -> {
                 row.removeCell(cell);
                 cell = row.createCell(columnIndex);
                 cell.setCellValue(cellValue.getBooleanValue());
-                break;
-            case NUMERIC:
+            }
+            case NUMERIC -> {
                 row.removeCell(cell);
                 cell = row.createCell(columnIndex);
                 cell.setCellValue(cellValue.getNumberValue());
-                break;
-            case STRING:
+            }
+            case STRING -> {
                 row.removeCell(cell);
                 cell = row.createCell(columnIndex);
                 cell.setCellValue(cellValue.getStringValue());
-                break;
-            case BLANK:
-                break;
-            case ERROR:
-                break;
-            case FORMULA:
-                break;
+            }
+            default -> {
+            }
         }
         return cell;
     }
