@@ -12,21 +12,12 @@ import java.lang.annotation.RetentionPolicy;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface ColumnExcelStyle {
     ExcelColumnDataFormat cellTypePattern() default ExcelColumnDataFormat.NONE;
-
     IndexedColors cellColor() default IndexedColors.AUTOMATIC;
-
     boolean isWrapText() default false;
-
     boolean isCentreAlignment() default false;
-
     boolean isFramed() default true;
-
     ExcelColumnFont fontName() default ExcelColumnFont.DEFAULT;
-
     short fontSize() default -1;
-
     boolean isFontBold() default false;
-
     ExcelColumnCellTextColor fontColor() default ExcelColumnCellTextColor.AUTOMATIC;
-
 }

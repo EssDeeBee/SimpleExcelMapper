@@ -9,12 +9,7 @@ import java.lang.annotation.Target;
 @Target({ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface ColumnExcelTotalFormula {
-
-    String name() default "";
-
     boolean useValue() default false;
-
     int position();
-
     ColumnExcelStyle cellStyle() default @ColumnExcelStyle;
 }

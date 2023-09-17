@@ -90,7 +90,8 @@ class ObjToExcelMapper {
 
             ColumnExcel columnExcel = field.getDeclaredAnnotation(ColumnExcel.class);
             if (nonNull(columnExcel)) {
-                createHeader(row, columnExcel.position(), columnExcel.applyNames()[0], columnExcel.headerStyle());
+                String headerName = columnExcel.applyNames().length > 0 ? columnExcel.applyNames()[0] : field.getName();
+                createHeader(row, columnExcel.position(), headerName, columnExcel.headerStyle());
             }
         } catch (NoSuchFieldException e) {
             log.debug(e.getLocalizedMessage());
@@ -265,7 +266,6 @@ class ObjToExcelMapper {
             if (columnExcelStyle.fontSize() != -1) {
                 font.setFontHeightInPoints(columnExcelStyle.fontSize());
             }
-
             if (!columnExcelStyle.cellTypePattern().equals(ExcelColumnDataFormat.NONE)) {
                 DataFormat dataFormat = cell.getRow().getSheet().getWorkbook().createDataFormat();
                 cellStyle.setDataFormat(dataFormat.getFormat(columnExcelStyle.cellTypePattern().getFormatPattern()));
@@ -280,6 +280,9 @@ class ObjToExcelMapper {
                 cellStyle.setAlignment(HorizontalAlignment.CENTER);
                 cellStyle.setVerticalAlignment(VerticalAlignment.CENTER);
 
+            }
+            if (columnExcelStyle.isWrapText()) {
+                cellStyle.setWrapText(true);
             }
             if (columnExcelStyle.isFramed()) {
                 cellStyle.setBorderTop(BorderStyle.THIN);
