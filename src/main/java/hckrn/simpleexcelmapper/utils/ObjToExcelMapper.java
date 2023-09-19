@@ -32,14 +32,39 @@ import static java.util.Objects.nonNull;
 @Slf4j
 class ObjToExcelMapper {
 
+    /**
+     * Creates an Excel workbook from a list of objects starting from the first row.
+     *
+     * @param reportObjects A list of objects to be converted into the Excel workbook.
+     * @param <T> The generic type of the objects in the list.
+     * @return A Workbook representation of the provided objects.
+     */
     <T> Workbook createWorkbookFromObject(List<T> reportObjects) {
         return createWorkbookFromObject(reportObjects, 0, "Report_" + LocalDate.now());
     }
 
+    /**
+     * Creates an Excel workbook from a list of objects, starting from a specified row number.
+     *
+     * @param reportObjects   A list of objects to be converted into the Excel workbook.
+     * @param startRowNumber  The row number to start inserting data into the Excel workbook.
+     * @param <T>             The generic type of the objects in the list.
+     * @return A Workbook representation of the provided objects.
+     */
     <T> Workbook createReportWorkbook(List<T> reportObjects, int startRowNumber) {
         return createWorkbookFromObject(reportObjects, startRowNumber, "Report_" + LocalDate.now());
     }
 
+    /**
+     * Creates an Excel workbook from a list of objects with a given sheet name,
+     * starting from a specified row number.
+     *
+     * @param reportObjects   A list of objects to be converted into the Excel workbook.
+     * @param startRowNumber  The row number to start inserting data into the Excel workbook.
+     * @param sheetName       The name of the sheet in the Excel workbook.
+     * @param <T>             The generic type of the objects in the list.
+     * @return A Workbook representation of the provided objects.
+     */
     <T> Workbook createWorkbookFromObject(List<T> reportObjects, int startRowNumber, String sheetName) {
 
         if (nonNull(reportObjects) && !reportObjects.isEmpty()) {
@@ -90,7 +115,8 @@ class ObjToExcelMapper {
 
             ColumnExcel columnExcel = field.getDeclaredAnnotation(ColumnExcel.class);
             if (nonNull(columnExcel)) {
-                createHeader(row, columnExcel.position(), columnExcel.applyNames()[0], columnExcel.headerStyle());
+                String headerName = columnExcel.applyNames().length > 0 ? columnExcel.applyNames()[0] : field.getName();
+                createHeader(row, columnExcel.position(), headerName, columnExcel.headerStyle());
             }
         } catch (NoSuchFieldException e) {
             log.debug(e.getLocalizedMessage());
@@ -151,7 +177,6 @@ class ObjToExcelMapper {
         } catch (NoSuchFieldException | InvocationTargetException | IllegalAccessException e) {
             log.debug(e.getLocalizedMessage());
         }
-
     }
 
     private void defineAndAssignCellValue(Class<?> returnType, Cell cell, Object invokeResult, Method readMethod) {
@@ -189,8 +214,8 @@ class ObjToExcelMapper {
             if (columnExcelTotalFormula != null
                     && method.getReturnType().isAssignableFrom(String.class)
                     && method.getParameters().length == 2
-                    && (method.getModifiers() & Modifier.STATIC) != 0
-                    && (method.getModifiers() & Modifier.PRIVATE) == 0
+                    && Modifier.isStatic(method.getModifiers())
+                    && !Modifier.isPrivate(method.getModifiers())
             ) {
                 String cellFormula = (String) method.invoke(tClazz, firstRowNum, row.getRowNum());
                 Cell cell = row.createCell(columnExcelTotalFormula.position());
@@ -255,41 +280,47 @@ class ObjToExcelMapper {
             Font font = cell.getRow().getSheet().getWorkbook().createFont();
             font.setBold(columnExcelStyle.isFontBold());
 
-            if (!columnExcelStyle.fontName().equals(ExcelColumnFont.DEFAULT)) {
-                font.setFontName(columnExcelStyle.fontName().getFontName());
-
-            }
-            if (!columnExcelStyle.fontColor().equals(ExcelColumnCellTextColor.AUTOMATIC)) {
-                font.setColor(columnExcelStyle.fontColor().getColorIndex());
-            }
-            if (columnExcelStyle.fontSize() != -1) {
-                font.setFontHeightInPoints(columnExcelStyle.fontSize());
-            }
-
-            if (!columnExcelStyle.cellTypePattern().equals(ExcelColumnDataFormat.NONE)) {
-                DataFormat dataFormat = cell.getRow().getSheet().getWorkbook().createDataFormat();
-                cellStyle.setDataFormat(dataFormat.getFormat(columnExcelStyle.cellTypePattern().getFormatPattern()));
-
-            }
-            if (!columnExcelStyle.cellColor().equals(IndexedColors.AUTOMATIC)) {
-                cellStyle.setFillForegroundColor(columnExcelStyle.cellColor().getIndex());
-                cellStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-
-            }
-            if (columnExcelStyle.isCentreAlignment()) {
-                cellStyle.setAlignment(HorizontalAlignment.CENTER);
-                cellStyle.setVerticalAlignment(VerticalAlignment.CENTER);
-
-            }
-            if (columnExcelStyle.isFramed()) {
-                cellStyle.setBorderTop(BorderStyle.THIN);
-                cellStyle.setBorderBottom(BorderStyle.THIN);
-                cellStyle.setBorderLeft(BorderStyle.THIN);
-                cellStyle.setBorderRight(BorderStyle.THIN);
-            }
+            setFontAndColor(columnExcelStyle, font, cellStyle);
+            setFormatAndBorders(cell, columnExcelStyle, cellStyle);
 
             cellStyle.setFont(font);
             cell.setCellStyle(cellStyle);
+        }
+    }
+
+    private void setFormatAndBorders(Cell cell, ColumnExcelStyle columnExcelStyle, CellStyle cellStyle) {
+        if (!columnExcelStyle.cellTypePattern().equals(ExcelColumnDataFormat.NONE)) {
+            DataFormat dataFormat = cell.getRow().getSheet().getWorkbook().createDataFormat();
+            cellStyle.setDataFormat(dataFormat.getFormat(columnExcelStyle.cellTypePattern().getFormatPattern()));
+        }
+        if (columnExcelStyle.isCentreAlignment()) {
+            cellStyle.setAlignment(HorizontalAlignment.CENTER);
+            cellStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        }
+        if (columnExcelStyle.isWrapText()) {
+            cellStyle.setWrapText(true);
+        }
+        if (columnExcelStyle.isFramed()) {
+            cellStyle.setBorderTop(BorderStyle.THIN);
+            cellStyle.setBorderBottom(BorderStyle.THIN);
+            cellStyle.setBorderLeft(BorderStyle.THIN);
+            cellStyle.setBorderRight(BorderStyle.THIN);
+        }
+    }
+
+    private void setFontAndColor(ColumnExcelStyle columnExcelStyle, Font font, CellStyle cellStyle) {
+        if (!columnExcelStyle.fontName().equals(ExcelColumnFont.DEFAULT)) {
+            font.setFontName(columnExcelStyle.fontName().getFontName());
+        }
+        if (columnExcelStyle.fontSize() != -1) {
+            font.setFontHeightInPoints(columnExcelStyle.fontSize());
+        }
+        if (!columnExcelStyle.fontColor().equals(ExcelColumnCellTextColor.AUTOMATIC)) {
+            font.setColor(columnExcelStyle.fontColor().getColorIndex());
+        }
+        if (!columnExcelStyle.cellColor().equals(IndexedColors.AUTOMATIC)) {
+            cellStyle.setFillForegroundColor(columnExcelStyle.cellColor().getIndex());
+            cellStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
         }
     }
 

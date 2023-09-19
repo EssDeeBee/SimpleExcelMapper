@@ -5,6 +5,7 @@ import lombok.Getter;
 @Getter
 public enum ExcelColumnDataFormat {
 
+    USD("$#,##0.00"),
     RUR("#,##0.00 [$р.-419];-#,##0.00 [$р.-419]"),
     PERCENTAGE("0.00%"),
     NUMBER("#,##0.00"),

@@ -39,7 +39,7 @@ public class Student {
     }
 
     @ColumnExcelTotalFormula(position = 0)
-    public static String studentIdsSum(int firstRowNum, int lastRowNum) {
+    public  static String studentIdsSum(int firstRowNum, int lastRowNum) {
         return "IFERROR(SUM("
                 + new CellAddress(firstRowNum, 0).formatAsString()
                 + ":"

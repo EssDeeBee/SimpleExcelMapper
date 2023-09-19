@@ -22,6 +22,14 @@ import static org.apache.poi.ss.usermodel.CellType.*;
 @Slf4j
 class ExcelToObjMapper {
 
+    /**
+     * Maps the given workbook to a map of sheet names to lists of objects of the specified type.
+     *
+     * @param <T>      The type of object to map to.
+     * @param workbook The workbook to map.
+     * @param tObject  The class type to map each row of the workbook to.
+     * @return A map of sheet names to lists of objects of the specified type.
+     */
     <T> Map<String, List<T>> mapWorkbookToObjs(Workbook workbook, Class<T> tObject) {
         var result = new HashMap<String, List<T>>();
         Iterator<Sheet> sheetIterator = workbook.sheetIterator();
@@ -32,6 +40,15 @@ class ExcelToObjMapper {
         return result;
     }
 
+    /**
+     * Maps the given sheet to a list of objects of the specified type.
+     *
+     * @param <T>           The type of object to map to.
+     * @param sheet         The sheet to map.
+     * @param tObject       The class type to map each row of the sheet to.
+     * @param ignoreFirstRow Determines if the first row of the sheet should be ignored during mapping.
+     * @return A list of objects of the specified type.
+     */
     <T> List<T> mapSheetToObjs(Sheet sheet, Class<T> tObject, boolean ignoreFirstRow) {
         var result = new LinkedList<T>();
         Iterator<Row> rowIterator = sheet.rowIterator();
@@ -45,6 +62,14 @@ class ExcelToObjMapper {
     }
 
 
+    /**
+     * Maps the given row to an object of the specified type.
+     *
+     * @param <T>    The type of object to map to.
+     * @param row    The row to map.
+     * @param tClass The class type to map the row to.
+     * @return An object of the specified type.
+     */
     @SneakyThrows
     <T> T mapRowToObj(Row row, Class<T> tClass) {
         Constructor<?>[] constructors = tClass.getConstructors();
